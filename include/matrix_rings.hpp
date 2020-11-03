@@ -1,6 +1,6 @@
 #pragma once
 
-#include "base_operators.hpp"
+#include "base_constant_function.hpp"
 
 #include <iostream>
 #include <iomanip>
@@ -11,11 +11,12 @@
 #include <boost/mpl/bool.hpp>
 #include <boost/random.hpp>
 #include <boost/any.hpp>
+#include <boost/hana.hpp>
 
-///2-х мерная матрица.
-///
-///
-/// is vector for multiply  on vector
+#define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
+
+
+/// is vector for multiply vfnrbx on vector
 template <typename F, size_t N, typename Vector>
 struct is_vector : boost::mpl::false_ {};
 template <typename F, size_t N>
@@ -26,6 +27,86 @@ template <typename F, size_t N>
 struct is_vector<F, N, std::array<F, N>> : boost::mpl::true_ {
     static constexpr size_t size = N;
 };
+
+template<typename T> struct is_int : boost::mpl::false_ {};
+template<> struct is_int<int> : boost::mpl::true_ {};
+template<> struct is_int<unsigned> : boost::mpl::true_ {};
+template<> struct is_int<size_t> : boost::mpl::true_ {};
+
+template<typename T> struct is_complex_d : boost::mpl::false_ {};
+template<> struct is_complex_d<std::complex<double>> : boost::mpl::true_ {};
+template<typename T> struct is_complex_i : boost::mpl::false_ {};
+template<> struct is_complex_i<std::complex<int>> : boost::mpl::true_ {};
+
+///Array
+
+template<typename T, int N>
+class Array : boost::array<T, N> {
+    typedef boost::array<T, N> super;
+    typedef typename super::iterator iterator;
+    typedef typename super::const_iterator const_iterator;
+    static bool are_equal(Array<T, N> const& a, Array<T, N> const& b) {
+        for(size_t i = 0; i < N; ++i) if(a.at(i) == b.at(i)) return true;
+        return false;
+    }
+public:
+    static constexpr size_t dimension = 1;
+    Array() : super() {}
+    template<typename ...Args>
+    Array(Args&& ... args) : super({std::forward<Args>(args)...}) {
+        BOOST_STATIC_ASSERT(sizeof...(args) == N);
+    }
+    template<typename Iter, typename = std::enable_if<is_input_iterator<Iter> && !is_random_iterator<Iter>>>
+    Array(Iter first, Iter last) : super() {
+        assert((last - first) == N);
+        std::copy(first, last, super::begin());
+    }
+    boost::array<T, N> const& base() const {
+        return static_cast<boost::array<T, N> const&>(*this);
+    }
+    boost::array<T, N>& base() {
+        return static_cast<boost::array<T, N>&>(*this);
+    }
+    iterator begin() {
+        return super::begin();
+    }
+    iterator end() {
+        return super::end();
+    }
+    const const_iterator cbegin() const {
+        return super::cbegin();
+    }
+    const const_iterator cend() const {
+        return super::cend();
+    }
+    size_t size() {
+        return super::size();
+    }
+    T& operator[] (int i)  {
+        return super::at(i);
+    }
+    Array<T, N> &operator *= (T s){
+        for(size_t i = 0; i < N; ++i) {
+            super::at(i) *= s;
+        }
+        return *this;
+    }
+    friend bool operator == (Array<T, N> const& a, Array<T, N> const& b) {
+        return are_equal(a, b);
+    }
+    template<size_t M>
+    Array<T, M> segment(size_t k) {
+        Array<T, M> tmp;
+        for(size_t i = 0; i < M; ++i) {
+            tmp[i] = super::at(k + M - 1);
+        }
+        return tmp;
+    }
+};
+
+///2-х мерная матрица.
+///
+///
 
 template<size_t N, size_t M, typename T>
 struct matrix_2 : boost::multi_array<T, 2> {
@@ -131,15 +212,90 @@ public:
 };
 
 
-template<typename T> struct is_int : boost::mpl::false_ {};
-template<> struct is_int<int> : boost::mpl::true_ {};
-template<> struct is_int<unsigned> : boost::mpl::true_ {};
+///З-х мерная матрица.
+///
 
+template<size_t N, size_t M, size_t K, typename T>
+struct matrix_3 : boost::multi_array<T, 3> {
+    static constexpr size_t dimension = 3;
+    static constexpr size_t row = N;
+    static constexpr size_t col = M;
+    static constexpr size_t lin = K;
+    typedef boost::multi_array<T, 3> super;
+    typedef typename super::iterator iterator;
+    typedef typename super::const_iterator  constant_iterator;
+    typedef T value_type;
+private:
+    super MTRX;
+public:
+    constexpr matrix_3() : MTRX({boost::extents[N][M][K]}) {}
+
+    size_t size(size_t i) const {
+        BOOST_ASSERT(i < 3);
+        return MTRX.shape()[i];
+    }
+    iterator begin() {
+        return MTRX.begin();
+    }
+    iterator end() {
+        return MTRX.end();
+    }
+    constant_iterator cbegin() {
+        return MTRX.cbegin();
+    }
+    constant_iterator cend() {
+        return MTRX.cend();
+    }
+    constexpr T& operator () (size_t i, size_t j, size_t k) {
+        return MTRX[i][j][k];
+    }
+    constexpr T const& operator () (size_t i, size_t j, size_t k) const {
+        return MTRX[i][j][k];
+    }
+    constexpr T& at (size_t i, size_t j, size_t k) {
+        return MTRX[i][j][k];
+    }
+    matrix_3<N, M, K, T>& operator = (matrix_3<N, M, K, T> const& other) {
+        MTRX = other.MTRX;
+        return *this;
+    }
+    constexpr bool operator == (matrix_3<N, M, K, T> const& other) const {
+        return MTRX == other.MTRX;
+    }
+    constexpr bool operator != (matrix_3<N, M, K, T> const& other) const {
+        return MTRX != other.MTRX;
+    }
+    friend std::ostream& operator << (std::ostream& os, const matrix_3<N, M, K, T>& A){
+        for(const auto& x : A.MTRX) {
+            for(const auto& y : x) {
+                for(const auto& z : y) os << z << "\t";
+                os << std::endl;
+            } os << std::endl;
+        } os << std::endl;
+        return os;
+    }
+};
 
 template<typename T, typename Matrix, typename = boost::enable_if_t<(Matrix::dimension > 0)>>
-void gen_rand_matrix(Matrix& A, T min, T max) {
+inline void gen_rand_matrix(Matrix& A, T min, T max) {
     std::time_t now = std::time(0);
     boost::random::mt19937 gen{static_cast<std::uint32_t>(now)};
+        if constexpr(Matrix::dimension == 4 && is_int<T>::value) {
+            boost::random::uniform_int_distribution<> dist{min, max};
+            for(size_t i = 0; i < A.size(0); ++i)
+                for(size_t j = 0; j < A.size(1); ++j)
+                    for(size_t k = 0; k < A.size(2); ++k)
+                        for(size_t l = 0; l < A.size(3); ++l)
+                            A(i, j, k, l) = dist(gen);
+        }
+        if constexpr(Matrix::dimension == 4 && !is_int<T>::value) {
+            boost::random::uniform_real_distribution<> dist{min, max};
+            for(size_t i = 0; i < A.size(0); ++i)
+                for(size_t j = 0; j < A.size(1); ++j)
+                    for(size_t k = 0; k < A.size(2); ++k)
+                        for(size_t l = 0; l < A.size(3); ++l)
+                            A(i, j, k, l) = dist(gen);
+        }
         if constexpr(Matrix::dimension == 3 && is_int<T>::value) {
             boost::random::uniform_int_distribution<> dist{min, max};
             for(size_t i = 0; i < A.size(0); ++i)
@@ -166,7 +322,83 @@ void gen_rand_matrix(Matrix& A, T min, T max) {
                 for(size_t j = 0; j < A.size(1); ++j)
                         A(i, j) = dist(gen);
         }
+        if constexpr(Matrix::dimension == 1 && is_int<T>::value) {
+            boost::random::uniform_int_distribution<> dist{min, max};
+            for(size_t i = 0; i < A.size(); ++i)
+                    A[i] = dist(gen);
+        }
+        if constexpr(Matrix::dimension == 1 && !is_int<T>::value) {
+            boost::random::uniform_real_distribution<> dist{min, max};
+            for(size_t i = 0; i < A.size(); ++i)
+                    A[i] = dist(gen);
+        }
+        if constexpr(Matrix::dimension == 1 && !is_int<T>::value && !is_complex_d<T>::value) {
+            boost::random::uniform_real_distribution<> dist{min, max};
+            for(size_t i = 0; i < A.size(); ++i)
+                    A[i] = std::complex(dist(gen), dist(gen));
+        }
 }
+
+///4-х мерная матрица.
+///
+
+template<size_t N, size_t M, size_t K, size_t L, typename T>
+struct matrix_4 : boost::multi_array<T, 4> {
+    static constexpr size_t dimension = 4;
+    static constexpr size_t row = N;
+    static constexpr size_t col = M;
+    static constexpr size_t lin = K;
+    static constexpr size_t vol = L;
+    typedef boost::multi_array<T, 4> super;
+    typedef typename super::iterator iterator;
+    typedef typename super::const_iterator  constant_iterator;
+    typedef T value_type;
+private:
+    super MTRX;
+public:
+    matrix_4() : MTRX({boost::extents[N][M][K][L]}) {}
+
+    size_t size(size_t i) const {
+        BOOST_ASSERT(i < 4);
+        return MTRX.shape()[i];
+    }
+    iterator begin() {
+        return MTRX.begin();
+    }
+    iterator end() {
+        return MTRX.end();
+    }
+    constant_iterator cbegin() {
+        return MTRX.cbegin();
+    }
+    constant_iterator cend() {
+        return MTRX.cend();
+    }
+    constexpr T& operator () (size_t i, size_t j, size_t k, size_t l) {
+        return MTRX[i][j][k][l];
+    }
+    constexpr T const& operator () (size_t i, size_t j, size_t k, size_t l) const {
+        return MTRX[i][j][k][l];
+    }
+    constexpr T& at (size_t i, size_t j, size_t k, size_t l) {
+        return MTRX[i][j][k][l];
+    }
+    matrix_4<N, M, K, L, T>& operator = (matrix_4<N, M, K, L, T> const& other) {
+        MTRX = other.MTRX;
+        return *this;
+    }
+    friend std::ostream& operator << (std::ostream& os, const matrix_4<N, M, K, L, T>& A){
+        for(const auto& x : A.MTRX) {
+            for(const auto& y : x) {
+                for(const auto& z : y) {
+                    for(const auto& f : z) os << f << "\t";
+                    os << std::endl;
+                } os << std::endl;
+            } os << std::endl;
+        } os << std::endl;
+        return os;
+    }
+};
 
 ///Minus matrix
 
@@ -204,7 +436,7 @@ public:
     }
 };
 template <typename Matrix>
-void calc_minus_matrix(Matrix& RESULT, const Matrix& A, const Matrix& B) {
+inline void calc_minus_matrix(Matrix& RESULT, const Matrix& A, const Matrix& B) {
     matrix_minus_2<Matrix> closure(RESULT, A, B);
     meta_loop<Matrix::col>(closure);
 }
@@ -363,7 +595,7 @@ public:
     }
 };
 template <typename Matrix>
-void calc_identity_matrix(Matrix& RESULT) {
+inline void calc_identity_matrix(Matrix& RESULT) {
     identity_matrix_2<Matrix> closure(RESULT);
     meta_loop<Matrix::col>(closure);
 }
