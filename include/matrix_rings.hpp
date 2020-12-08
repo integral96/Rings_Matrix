@@ -12,11 +12,13 @@
 #include <boost/random.hpp>
 #include <boost/any.hpp>
 #include <boost/hana.hpp>
+#include <boost/proto/proto.hpp>
 
 #define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
 
 
 namespace hana = boost::hana;
+namespace proto = boost::proto;
 using boost::hana::literals::operator ""_c;
 
 template<typename Iter>
