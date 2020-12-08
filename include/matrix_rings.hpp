@@ -1,6 +1,7 @@
 #pragma once
 
-#include "base_operators.hpp"
+#include "base_constant_function.hpp"
+#include "Dimensions.hpp"
 
 #include <iostream>
 #include <iomanip>
@@ -14,6 +15,64 @@
 #include <boost/hana.hpp>
 
 #define _SILENCE_ALL_CXX17_DEPRECATION_WARNINGS
+
+
+namespace hana = boost::hana;
+using boost::hana::literals::operator ""_c;
+
+template<typename Iter>
+constexpr bool is_input_iterator =
+        hana::is_convertible<typename std::iterator_traits<Iter>::iterator_category, std::input_iterator_tag>{};
+template<typename Iter>
+constexpr bool is_random_iterator =
+        hana::is_convertible<typename std::iterator_traits<Iter>::iterator_category, std::random_access_iterator_tag>{};
+
+//constexpr auto is_3d_hana = hana::metafunction_class<matrix_3<N1, N2, N3, int>>;
+
+struct MatrixGrammar : proto::or_<
+        proto::terminal<proto::_>,
+        proto::plus<MatrixGrammar, MatrixGrammar>,
+        proto::minus<MatrixGrammar, MatrixGrammar>,
+        proto::multiplies<MatrixGrammar, MatrixGrammar>
+        >
+{};
+template<typename Expr>
+struct MatrixExpr;
+struct MatrixDomain : proto::domain<proto::generator<MatrixExpr>, MatrixGrammar> {};
+struct SubscriptCntxt : proto::callable_context<const SubscriptCntxt> {
+    typedef double result_type;
+    int i, j;
+    SubscriptCntxt(int i, int j) : i(i), j(j) {}
+    template<class Matrix>
+    double operator()(proto::tag::terminal, const Matrix& mtrx) const {
+        return mtrx(i, j);
+    }
+    template<typename E1, typename E2>
+    double operator()(proto::tag::plus, const E1& e1, const E2& e2) const {
+        return proto::eval(e1, *this) + proto::eval(e2, *this);
+    }
+    template<typename E1, typename E2>
+    double operator()(proto::tag::minus, const E1& e1, const E2& e2) const {
+        return proto::eval(e1, *this) - proto::eval(e2, *this);
+    }
+    template<typename E1, typename E2>
+    double operator()(proto::tag::multiplies, const E1& e1, const E2& e2) const {
+        return proto::eval(e1, *this) * proto::eval(e2, *this);
+    }
+};
+template<typename Expr>
+struct MatrixExpr : proto::extends<Expr, MatrixExpr<Expr>, MatrixDomain> {
+    explicit MatrixExpr(const Expr& e)
+        : proto::extends<Expr, MatrixExpr<Expr>, MatrixDomain>(e) {
+    }
+
+    typename proto::result_of::eval< Expr, SubscriptCntxt>::type
+    operator ()(int i, int j) const {
+        const SubscriptCntxt ctx(i, j);
+        return proto::eval(*this, ctx);
+    }
+};
+
 
 
 /// is vector for multiply vfnrbx on vector
@@ -43,20 +102,23 @@ template<> struct is_complex_i<std::complex<int>> : boost::mpl::true_ {};
 template<typename T, int N>
 class Array : boost::array<T, N> {
     typedef boost::array<T, N> super;
-    typedef typename super::iterator iterator;
-    typedef typename super::const_iterator const_iterator;
     static bool are_equal(Array<T, N> const& a, Array<T, N> const& b) {
         for(size_t i = 0; i < N; ++i) if(a.at(i) == b.at(i)) return true;
         return false;
     }
 public:
+    typedef typename super::value_type value_type;
+    typedef typename super::iterator iterator;
+    typedef typename super::const_iterator const_iterator;
+public:
     static constexpr size_t dimension = 1;
+    static constexpr size_t row = N;
     Array() : super() {}
     template<typename ...Args>
     Array(Args&& ... args) : super({std::forward<Args>(args)...}) {
         BOOST_STATIC_ASSERT(sizeof...(args) == N);
     }
-    template<typename Iter, typename = std::enable_if<is_input_iterator<Iter> && !is_random_iterator<Iter>>>
+    template<typename Iter, typename = std::enable_if_t<is_input_iterator<Iter> && !is_random_iterator<Iter>>>
     Array(Iter first, Iter last) : super() {
         assert((last - first) == N);
         std::copy(first, last, super::begin());
@@ -83,6 +145,9 @@ public:
         return super::size();
     }
     T& operator[] (int i)  {
+        return super::at(i);
+    }
+    const T& operator[] (int i) const  {
         return super::at(i);
     }
     Array<T, N> &operator *= (T s){
@@ -154,6 +219,16 @@ public:
     }
     constexpr matrix_2<N, M, T>& operator = (matrix_2<N, M, T> const& other) {
         MTRX = other.MTRX;
+        return *this;
+    }
+    template<typename Expr>
+    matrix_2<N, M, T>& operator = ( const Expr& expr ) {
+        for(int i = 0; i < N; ++i) {
+            for(int j = 0; j < M; ++j) {
+                const SubscriptCntxt ctx(i, j);
+                MTRX[i][j] = proto::eval(proto::as_expr<MatrixDomain>(expr), ctx);
+            }
+        }
         return *this;
     }
     friend constexpr matrix_2<N, M, T> operator - (const matrix_2<N, M, T>& other1, const matrix_2<N, M, T>& other2) {
@@ -332,11 +407,11 @@ inline void gen_rand_matrix(Matrix& A, T min, T max) {
             for(size_t i = 0; i < A.size(); ++i)
                     A[i] = dist(gen);
         }
-        if constexpr(Matrix::dimension == 1 && !is_int<T>::value && !is_complex_d<T>::value) {
-            boost::random::uniform_real_distribution<> dist{min, max};
-            for(size_t i = 0; i < A.size(); ++i)
-                    A[i] = std::complex(dist(gen), dist(gen));
-        }
+//        if constexpr(Matrix::dimension == 1 && !is_int<T>::value && !is_complex_d<T>::value) {
+//            boost::random::uniform_real_distribution<> dist{min, max};
+//            for(size_t i = 0; i < A.size(); ++i)
+//                    A[i] = std::complex(dist(gen), dist(gen));
+//        }
 }
 
 ///4-х мерная матрица.
@@ -984,3 +1059,4 @@ void calc_three_diag_matrix(Matrix& RESULT, typename Matrix::value_type alpha) {
     meta_loop<Matrix::col>(closure);
 }
 ////close three diag matrix
+
